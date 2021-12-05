@@ -79,6 +79,8 @@ struct RendererData {
 RendererData rendererData = {0, "", "", Color::WHITE, Color::WHITE, Color::BLUE, 128, 1,matrix(30, 20) };
 
 void loop() {
+    renderer.setBrightness(rendererData.brightness);
+
     // One line of text
     // ======================================================================
     if (rendererData.type == 0) {
@@ -96,7 +98,7 @@ void loop() {
     // ======================================================================
 
 
-    // One line of text
+    // Two lines of text
     // ======================================================================
     if (rendererData.type == 1) {
         renderer.clear();
@@ -116,7 +118,7 @@ void loop() {
     // ======================================================================
 
 
-    // One line of text
+    // Matrix of pixels
     // ======================================================================
     if (rendererData.type == 2) {
         renderer.clear();
@@ -144,7 +146,6 @@ void updateRendererData(uint8_t* payload) {
         rendererData = {0, "Error", "", Color::RED, 0, Color::WHITE, 255, 1};
         return;
     }
-
     //TODO
 }
 
