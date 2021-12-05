@@ -19,7 +19,8 @@ WebSocketsClient client;
 void clientDataReceived(WStype_t, uint8_t*, size_t);
 
 void setup() {
-    // LIGHT RENDERER SETUP ========================
+    // Light Renderer Setup
+    // ======================================================================
     renderer.setup();
 
     renderer.setInverted(conf::inverted);
@@ -27,9 +28,11 @@ void setup() {
 
     renderer.update();
     renderer.render();
-    // =============================================
+    // ======================================================================
 
-    // INTERNET CONNECTION =========================
+
+    // Internet Connection
+    // ======================================================================
     WiFi.mode(WIFI_STA);
     WiFi.begin(conf::networkSSID, conf::networkPassword);
 
@@ -44,16 +47,29 @@ void setup() {
 
         delay(50);
     }
-    // =============================================
+    // ======================================================================
 
-    // WEBSOCKET CLIENT ============================
+
+    // Websocket Connection
+    // ======================================================================
     client.begin(conf::serverHost, conf::serverPort, conf::dataURL);
 
     client.onEvent(clientDataReceived);
     client.setReconnectInterval(5000);
     client.enableHeartbeat(15000, 3000, 2);
-    // =============================================
+    // ======================================================================
 }
+
+struct RendererData {
+    int type;
+
+    string line1;
+    string line2;
+
+    matrix pixels;
+};
+
+RendererData rendererData;
 
 void loop() {
     renderer.update();
