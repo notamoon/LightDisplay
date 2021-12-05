@@ -3,12 +3,16 @@
 
 namespace conf {
 
-    const char* networkSSID = "";
+    const char* networkSSID = "VUSD";
     const char* networkPassword = "";
 
-    const char* serverURL = "";
+    const char* serverHost = "123.56.7.89";
+    const int   serverPort = 1234;
 
-    const int displayWidth = 0, displayHeight = 0;
+    const char* httpURL = "/";
+    const char* dataURL = "/";
+
+    const int displayWidth = 30, displayHeight = 20;
 
     const int dataPin = 0;
 
