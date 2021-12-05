@@ -66,31 +66,98 @@ struct RendererData {
     string line1;
     string line2;
 
+    int color1;
+    int color2;
+    int color3;
+
+    int brightness;
+    int speed;
+
     matrix pixels;
 };
 
-RendererData rendererData;
+RendererData rendererData = {0, "", "", Color::WHITE, Color::WHITE, Color::BLUE, 128, 1,matrix(30, 20) };
 
 void loop() {
+    // One line of text
+    // ======================================================================
+    if (rendererData.type == 0) {
+        renderer.clear();
+
+        renderer.setColor(rendererData.color3);
+
+        renderer.drawArea(0, 0, 30, 20);
+
+        renderer.setFont(Fonts::FONT2);
+
+        renderer.setColor(rendererData.color1);
+        renderer.scrollText(rendererData.line1, 2, 4, 2, 26, Direction::HORIZONTAL, rendererData.speed);
+    }
+    // ======================================================================
+
+
+    // One line of text
+    // ======================================================================
+    if (rendererData.type == 1) {
+        renderer.clear();
+
+        renderer.setColor(rendererData.color3);
+
+        renderer.drawArea(0, 0, 30, 20);
+
+        renderer.setFont(Fonts::FONT1);
+
+        renderer.setColor(rendererData.color1);
+        renderer.scrollText(rendererData.line1, 2, 3, 2, 26, Direction::HORIZONTAL, rendererData.speed);
+
+        renderer.setColor(rendererData.color2);
+        renderer.scrollText(rendererData.line2, 2, 11, 2, 26, Direction::HORIZONTAL, rendererData.speed);
+    }
+    // ======================================================================
+
+
+    // One line of text
+    // ======================================================================
+    if (rendererData.type == 2) {
+        renderer.clear();
+
+        for (int x = 0; x < conf::displayWidth; x++) {
+            for (int y = 0; y < conf::displayHeight; y++) {
+                renderer.setColor(rendererData.pixels[x][y]);
+                renderer.drawPixel(x, y);
+            }
+        }
+    }
+    // ======================================================================
+
+
     renderer.update();
     renderer.render();
 }
 
+void updateRendererData(uint8_t* payload) {
+    DynamicJsonDocument jsonData(400);
+
+    DeserializationError error = deserializeJson(jsonData, payload);
+
+    if (error) {
+        rendererData = {0, "Error", "", Color::RED, 0, Color::WHITE, 255, 1};
+        return;
+    }
+
+    //TODO
+}
+
 void clientDataReceived(WStype_t type, uint8_t* payload, size_t length) {
-//// webSocket.sendTXT("message here");
-//// webSocket.sendBIN(payload, length);
     switch(type) {
         case WStype_DISCONNECTED:
+            rendererData = {0, "Disconnected from server", "", Color::RED, 0, Color::BLUE, 255, 1};
             break;
         case WStype_CONNECTED:
+            rendererData = {0, "Connected to server", "", Color::LIME, 0, Color::BLUE, 255, 1};
             break;
         case WStype_TEXT:
-            break;
-        case WStype_BIN:
-            break;
-        case WStype_PING:
-            break;
-        case WStype_PONG:
+            updateRendererData(payload);
             break;
     }
 }
