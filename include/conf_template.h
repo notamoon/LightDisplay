@@ -12,7 +12,8 @@ namespace conf {
     const char* httpURL = "/";
     const char* dataURL = "/";
 
-    const int displayWidth = 30, displayHeight = 20;
+    const int displayWidth  = 30;
+    const int displayHeight = 20;
 
     const int dataPin = 0;
 
