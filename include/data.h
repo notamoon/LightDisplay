@@ -8,8 +8,8 @@ using namespace std;
 
 struct SimpleRendererData {
     String text;
-    int textColor[3];
-    int borderColor[3];
+    int textColor;
+    int borderColor;
     int speed;
 
     int brightness;
@@ -17,20 +17,20 @@ struct SimpleRendererData {
 
 struct TwoLineRendererData {
     String topText;
-    int topTextColor[3];
+    int topTextColor;
     int topSpeed;
 
     String bottomText;
-    int bottomTextColor[3];
+    int bottomTextColor;
     int bottomSpeed;
 
-    int borderColor[3];
+    int borderColor;
 
     int brightness;
 };
 
 struct ImageRendererData {
-    matrix image;
+    uint32_t image[600];
 
     int brightness = 0;
 };

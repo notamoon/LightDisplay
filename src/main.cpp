@@ -3,9 +3,7 @@
 #include <ESP8266WiFiMulti.h>
 #include <ESP8266HTTPClient.h>
 #include <WebSocketsClient.h>
-#include <Hash.h>
 
-#include "ArduinoJson.h"
 #include "Adafruit_NeoPixel.h"
 #include "LightRenderer.h"
 #include "fonts.h"
@@ -17,43 +15,18 @@ Adafruit_NeoPixel strip(conf::displayWidth * conf::displayHeight, conf::dataPin,
 
 LightRenderer renderer(strip, conf::displayWidth, conf::displayHeight);
 
-ESP8266WiFiMulti WiFiMulti;
+ESP8266WiFiMulti internet;
+WiFiClient internetClient;
 
 WebSocketsClient client;
 
-void updateRendererData(uint8_t* &);
+void clientUpdateReceived(WStype_t, uint8_t*, size_t);
 
-void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
+void clearRenderer(int);
 
-    switch(type) {
-        case WStype_CONNECTED:
-            Serial.printf("Connected to url: %s\n", payload);
-            client.sendTXT("init");
-            break;
-
-        case WStype_TEXT: {
-            updateRendererData(payload);
-
-            break;
-        }
-        default:
-            break;
-    }
-}
-
-void clearRenderer(int color) {
-    renderer.setColor(color);
-    renderer.fillArea(0, 0, conf::displayWidth, conf::displayHeight);
-
-    renderer.update();
-    renderer.render();
-}
+unsigned long timeStarted;
 
 void setup() {
-    clearRenderer(Color::RED);
-
-    delay(5000);
-
     // Serial Monitor
     // ======================================================================
     clearRenderer(Color::CYAN);
@@ -62,10 +35,15 @@ void setup() {
     Serial.println("Began Serial output");
     // ======================================================================
 
+    for (int i = conf::bootDelay; i > 0; i--) {
+        Serial.printf("Starting in... %d\n", i);
+        delay(1000);
+    }
+
+    timeStarted = millis();
+
     // Light Renderer Setup
     // ======================================================================
-    clearRenderer(Color::YELLOW);
-
     renderer.setup();
 
     renderer.setInverted(conf::inverted);
@@ -80,15 +58,10 @@ void setup() {
 
     // Internet Connection
     // ======================================================================
-    clearRenderer(Color::WHITE);
-
-    //WiFi.mode(WIFI_STA);
-    //WiFi.begin(conf::networkSSID, conf::networkPassword);
-
-    WiFiMulti.addAP("VUSD-Wireless2", "N@v15ta!");
+    internet.addAP(conf::networkSSID, conf::networkPassword);
 
     //WiFi.disconnect();
-    while(WiFiMulti.run() != WL_CONNECTED) {
+    while(internet.run() != WL_CONNECTED) {
         Serial.print(".");
 
         delay(50);
@@ -104,10 +77,8 @@ void setup() {
 
     // Websocket Connection
     // ======================================================================
-    clearRenderer(Color::BLUE);
-
-    client.begin("mvhscsf.ml", 4567, "/api");
-    client.onEvent(webSocketEvent);
+    client.begin(conf::serverHost, conf::serverPort, conf::serverPath);
+    client.onEvent(clientUpdateReceived);
     client.setReconnectInterval(5000);
 
     Serial.println("Connected to websocket server.");
@@ -116,7 +87,7 @@ void setup() {
     clearRenderer(Color::LIME);
 }
 
-string type;
+String type;
 
 SimpleRendererData simpleRendererData;
 TwoLineRendererData twoLineRendererData;
@@ -125,102 +96,17 @@ ImageRendererData imageRendererData;
 unsigned long long heapCheckCooldown = 5000;
 unsigned long long lastHeapCheck = 0;
 
-void updateRendererData(uint8_t* &payload) {
-    DynamicJsonDocument document(1200);
-
-    DeserializationError error = deserializeJson(document, payload);
-
-    if (error) {
-        Serial.print("Encountered error deserializing display data: ");
-        Serial.println(error.f_str());
-
-        type = "simple";
-        simpleRendererData = {error.c_str(), {255, 0, 0}, {255, 255, 0}, 2};
-        return;
-    }
-
-    if (document["type"].as<string>() == "simple") {
-        type = "simple";
-
-        simpleRendererData.text = document["data"]["message"].as<string>();
-
-        simpleRendererData.textColor[0] = document["data"]["textColor"][0].as<int>();
-        simpleRendererData.textColor[1] = document["data"]["textColor"][1].as<int>();
-        simpleRendererData.textColor[2] = document["data"]["textColor"][2].as<int>();
-
-        simpleRendererData.borderColor[0] = document["data"]["borderColor"][0].as<int>();
-        simpleRendererData.borderColor[1] = document["data"]["borderColor"][1].as<int>();
-        simpleRendererData.borderColor[2] = document["data"]["borderColor"][2].as<int>();
-
-        simpleRendererData.speed = document["data"]["speed"].as<int>();
-
-        simpleRendererData.brightness = document["data"]["brightness"].as<int>();
-
-        Serial.println("Deserialized simple display data.");
-    }
-    else if (document["type"].as<string>() == "twoline") {
-        type = "twoline";
-
-        twoLineRendererData.bottomText = document["data"]["bottomMessage"].as<string>();
-
-        twoLineRendererData.bottomTextColor[0] = document["data"]["bottomTextColor"][0].as<int>();
-        twoLineRendererData.bottomTextColor[1] = document["data"]["bottomTextColor"][1].as<int>();
-        twoLineRendererData.bottomTextColor[2] = document["data"]["bottomTextColor"][2].as<int>();
-
-        twoLineRendererData.bottomSpeed = document["data"]["bottomSpeed"].as<int>();
-
-        twoLineRendererData.topText = document["data"]["topMessage"].as<string>();
-
-        twoLineRendererData.topTextColor[0] = document["data"]["topTextColor"][0].as<int>();
-        twoLineRendererData.topTextColor[1] = document["data"]["topTextColor"][1].as<int>();
-        twoLineRendererData.topTextColor[2] = document["data"]["topTextColor"][2].as<int>();
-
-        twoLineRendererData.topSpeed = document["data"]["topSpeed"].as<int>();
-
-        twoLineRendererData.borderColor[0] = document["data"]["borderColor"][0].as<int>();
-        twoLineRendererData.borderColor[1] = document["data"]["borderColor"][1].as<int>();
-        twoLineRendererData.borderColor[2] = document["data"]["borderColor"][2].as<int>();
-
-        twoLineRendererData.brightness = document["data"]["brightness"].as<int>();
-
-        Serial.println("Deserialized twoline display data.");
-    }
-    else if (document["type"].as<string>() == "image") {
-        type = "image";
-
-        imageRendererData.image = matrix(conf::displayWidth, conf::displayHeight);
-
-        for (auto x: document["data"]["image"].as<JsonArray>()) {
-            for (auto y: x.as<JsonArray>()) {
-                imageRendererData.image[x][y] = y;
-            }
-        }
-
-        imageRendererData.brightness = document["data"]["brightness"].as<int>();
-
-        Serial.println("Deserialized image display data.");
-    }
-
-    document.clear();
-}
-
 void loop() {
     client.loop();
+
+    // Check if the client is connected
     // ======================================================================
-    /*
     if (!client.isConnected()) {
-        client.connect(conf::serverHost, conf::serverPath, conf::serverPort);
-        client.send("init");
+        Serial.println("Client is not connected...");
+        delay(500);
     }
-     */
     // ======================================================================
 
-
-    // ======================================================================
-    // Check for message from server and update
-    //string payload;
-
-    //if (client.getMessage(payload)) updateRendererData(payload);
 
     // Print current size of heap every 5 seconds
     // ======================================================================
@@ -229,8 +115,10 @@ void loop() {
 
         Serial.print("Current Free Heap Size: ");
         Serial.println(EspClass::getFreeHeap());
+
+        Serial.print("Time Running: ");
+        Serial.println(millis() - timeStarted);
     }
-    // ======================================================================
 
 
     // One line of text
@@ -240,13 +128,13 @@ void loop() {
 
         renderer.clear();
 
-        renderer.setColor(simpleRendererData.borderColor[0], simpleRendererData.borderColor[1], simpleRendererData.borderColor[2]);
+        renderer.setColor(simpleRendererData.borderColor);
 
         renderer.drawArea(0, 0, 30, 20);
 
         renderer.setFont(Fonts::FONT2);
 
-        renderer.setColor(simpleRendererData.textColor[0], simpleRendererData.textColor[1], simpleRendererData.textColor[2]);
+        renderer.setColor(simpleRendererData.textColor);
         renderer.scrollText(simpleRendererData.text, 2, 4, 2, 26, Direction::HORIZONTAL, simpleRendererData.speed);
     }
     // ======================================================================
@@ -259,39 +147,18 @@ void loop() {
 
         renderer.clear();
 
-        renderer.setColor(twoLineRendererData.borderColor[0], twoLineRendererData.borderColor[1], twoLineRendererData.borderColor[2]);
+        renderer.setColor(twoLineRendererData.borderColor);
 
         renderer.drawArea(0, 0, 30, 20);
 
         renderer.setFont(Fonts::FONT1);
 
-        renderer.setColor(twoLineRendererData.bottomTextColor[0], twoLineRendererData.bottomTextColor[1], twoLineRendererData.bottomTextColor[2]);
+        renderer.setColor(twoLineRendererData.bottomTextColor);
         renderer.scrollText(twoLineRendererData.bottomText, 2, 3, 2, 26, Direction::HORIZONTAL, twoLineRendererData.bottomSpeed);
 
-        renderer.setColor(twoLineRendererData.topTextColor[0], twoLineRendererData.topTextColor[1], twoLineRendererData.topTextColor[2]);
+        renderer.setColor(twoLineRendererData.topTextColor);
         renderer.scrollText(twoLineRendererData.topText, 2, 11, 2, 26, Direction::HORIZONTAL, twoLineRendererData.topSpeed);
     }
-    // ======================================================================
-
-
-    // Matrix of pixels
-    // ======================================================================
-    else if (type == "image") {
-        renderer.setBrightness(imageRendererData.brightness);
-
-        renderer.clear();
-
-        for (int x = 0; x < conf::displayWidth; x++) {
-            for (int y = 0; y < conf::displayHeight; y++) {
-                renderer.setColor(imageRendererData.image[x][y]);
-                renderer.drawPixel(x, y);
-            }
-        }
-    }
-    // ======================================================================
-
-
-    // No data from server
     // ======================================================================
     else {
         renderer.setBrightness(255);
@@ -305,10 +172,120 @@ void loop() {
         renderer.setFont(Fonts::FONT2);
 
         renderer.setColor(Color::RED);
-        renderer.scrollText("No Data", 2, 4, 2, 26, Direction::HORIZONTAL, 3);
-    }
-    // ======================================================================
 
+        String text = "No Data";
+        renderer.scrollText(text, 2, 4, 2, 26, Direction::HORIZONTAL, 3);
+    }
+
+
+    renderer.update();
+    renderer.render();
+}
+
+String requestField(const String& field) {
+    Serial.println(String("   Requesting data field ") + field);
+
+    HTTPClient http;
+
+    String response;
+
+    if (http.begin(internetClient, String("http://") + conf::serverHost + ":" + conf::serverPort + conf::serverPath + "?field=" + field))
+        if (http.GET() == HTTP_CODE_OK) response = http.getString();
+
+    http.end();
+
+    return response;
+}
+
+vector<int> requestImageFragment(int fragmentIndex, int fragmentSize) {
+    Serial.println(String("   Requesting image fragment ") + fragmentIndex);
+
+    HTTPClient http;
+
+    String response;
+
+    if (http.begin(internetClient, String("http://") + conf::serverHost + ":" + conf::serverPort + conf::serverPath + "?image&fragment_index=" + fragmentIndex + "&fragment_size=" + fragmentSize))
+        if (http.GET() == HTTP_CODE_OK) response = http.getString();
+
+    int nextSeperator;
+
+    vector<int> colors;
+
+    while ((nextSeperator = response.indexOf(' ')) != -1) {
+        colors.push_back(response.substring(0, nextSeperator).toInt());
+
+        response = response.substring(nextSeperator + 1);
+    }
+
+    colors.push_back(response.toInt());
+
+    return colors;
+}
+
+void updateRendererData() {
+    Serial.println("Updating renderer data...");
+
+    if (type == "simple")
+    {
+        simpleRendererData.text = requestField("message");
+
+        simpleRendererData.textColor = requestField("textColor").toInt();
+        simpleRendererData.borderColor = requestField("borderColor").toInt();
+        simpleRendererData.speed = requestField("speed").toInt();
+        simpleRendererData.brightness = requestField("brightness").toInt();
+
+        Serial.println("Deserialized simple display data.");
+    }
+
+    if (type == "twoline")
+    {
+        twoLineRendererData.topText = requestField("topMessage");
+        twoLineRendererData.topTextColor = requestField("topTextColor").toInt();
+        twoLineRendererData.topSpeed = requestField("topSpeed").toInt();
+
+        twoLineRendererData.bottomText = requestField("bottomMessage");
+        twoLineRendererData.bottomTextColor = requestField("bottomTextColor").toInt();
+        twoLineRendererData.bottomSpeed = requestField("bottomSpeed").toInt();
+
+        twoLineRendererData.brightness = requestField("brightness").toInt();
+
+        Serial.println("Deserialized twoline display data.");
+    }
+
+    if (type == "image") {
+        int c = 0;
+
+        for (int i = 0; i < conf::fragmentCount; ++i) {
+            for (auto color : requestImageFragment(i, conf::fragmentSize)) {
+                imageRendererData.image[c] = color;
+                c++;
+            }
+        }
+
+        imageRendererData.brightness = requestField("brightness").toInt();
+
+        Serial.println("Deserialized image display data.");
+    }
+}
+
+void clientUpdateReceived(WStype_t wsType, uint8_t * payload, size_t length) {
+    if (wsType == WStype_CONNECTED) {
+        Serial.printf("Connected to url: %s\n", payload);
+        client.sendTXT("init");
+    }
+    else if (wsType == WStype_TEXT) {
+        Serial.printf("Received text: %s\n", payload);
+
+        type.clear();
+        type.concat(reinterpret_cast<char*>(payload));
+
+        updateRendererData();
+    }
+}
+
+void clearRenderer(int color) {
+    renderer.setColor(color);
+    renderer.fillArea(0, 0, conf::displayWidth, conf::displayHeight);
 
     renderer.update();
     renderer.render();

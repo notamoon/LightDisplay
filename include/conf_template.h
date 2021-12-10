@@ -3,19 +3,21 @@
 
 namespace conf {
 
-    const char* networkSSID = "VUSD";
+    const int bootDelay = 10;
+
+    const char* networkSSID = "";
     const char* networkPassword = "";
 
-    const char* serverHost = "123.56.7.89";
+    const char* serverHost = "12.34.56.78";
+    const char* serverPath = "/";
     const int   serverPort = 1234;
 
-    const char* httpURL = "/";
-    const char* dataURL = "/";
+    const int displayWidth = 30, displayHeight = 20;
 
-    const int displayWidth  = 30;
-    const int displayHeight = 20;
+    const int dataPin = 14;
 
-    const int dataPin = 0;
+    const int fragmentSize  = 30;
+    const int fragmentCount = 20;
 
     const bool inverted = false;
 }
