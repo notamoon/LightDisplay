@@ -1,14 +1,13 @@
 #ifndef LIGHTDISPLAY_DATA_H
 #define LIGHTDISPLAY_DATA_H
 
-#include <string>
-#include <vector>
+#include <Arduino.h>
 
 using namespace std;
 
 
 struct SimpleRendererData {
-    string text;
+    String text;
     int textColor[3];
     int borderColor[3];
     int speed;
@@ -17,11 +16,11 @@ struct SimpleRendererData {
 };
 
 struct TwoLineRendererData {
-    string topText;
+    String topText;
     int topTextColor[3];
     int topSpeed;
 
-    string bottomText;
+    String bottomText;
     int bottomTextColor[3];
     int bottomSpeed;
 
