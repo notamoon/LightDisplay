@@ -16,17 +16,26 @@ Adafruit_NeoPixel strip(conf::displayWidth * conf::displayHeight, conf::dataPin,
 LightRenderer renderer(strip, conf::displayWidth, conf::displayHeight);
 
 ESP8266WiFiMulti internet;
-WiFiClient internetClient;
 
 WebSocketsClient client;
 
-void clientUpdateReceived(WStype_t, uint8_t*, size_t);
-
-void clearRenderer(int);
-
 unsigned long timeStarted;
 
+void renderSimple(int brightness, int borderColor, int textColor, String text, int speed);
+void renderTwoLine(int brightness, int borderColor, int topTextColor, String topText, int topSpeed, int bottomTextColor, String bottomText, int bottomSpeed);
+void renderImage(int brightness, uint32_t image[]);
+
+String requestField(const String& field);
+vector<int> requestImageFragment(int fragmentIndex, int fragmentSize);
+
+void updateRendererData();
+void clientUpdateReceived(WStype_t, uint8_t*, size_t);
+void clearRenderer(int);
+
 void setup() {
+    pinMode(LED_BUILTIN, OUTPUT);
+    digitalWrite(LED_BUILTIN, LOW);
+
     // Serial Monitor
     // ======================================================================
     clearRenderer(Color::CYAN);
@@ -79,12 +88,15 @@ void setup() {
     // ======================================================================
     client.begin(conf::serverHost, conf::serverPort, conf::serverPath);
     client.onEvent(clientUpdateReceived);
+    client.enableHeartbeat(15000, 3000, 2);
     client.setReconnectInterval(5000);
 
     Serial.println("Connected to websocket server.");
     // ======================================================================
 
     clearRenderer(Color::LIME);
+
+    digitalWrite(2, HIGH);
 }
 
 String type;
@@ -93,20 +105,13 @@ SimpleRendererData simpleRendererData;
 TwoLineRendererData twoLineRendererData;
 ImageRendererData imageRendererData;
 
+bool recreateImage = false;
+
 unsigned long long heapCheckCooldown = 5000;
 unsigned long long lastHeapCheck = 0;
 
 void loop() {
     client.loop();
-
-    // Check if the client is connected
-    // ======================================================================
-    if (!client.isConnected()) {
-        Serial.println("Client is not connected...");
-        delay(500);
-    }
-    // ======================================================================
-
 
     // Print current size of heap every 5 seconds
     // ======================================================================
@@ -119,23 +124,19 @@ void loop() {
         Serial.print("Time Running: ");
         Serial.println(millis() - timeStarted);
     }
+    // ======================================================================
 
 
     // One line of text
     // ======================================================================
     if (type == "simple") {
-        renderer.setBrightness(simpleRendererData.brightness);
-
-        renderer.clear();
-
-        renderer.setColor(simpleRendererData.borderColor);
-
-        renderer.drawArea(0, 0, 30, 20);
-
-        renderer.setFont(Fonts::FONT2);
-
-        renderer.setColor(simpleRendererData.textColor);
-        renderer.scrollText(simpleRendererData.text, 2, 4, 2, 26, Direction::HORIZONTAL, simpleRendererData.speed);
+        renderSimple(
+                simpleRendererData.brightness,
+                simpleRendererData.borderColor,
+                simpleRendererData.textColor,
+                simpleRendererData.text,
+                simpleRendererData.speed
+                );
     }
     // ======================================================================
 
@@ -143,22 +144,33 @@ void loop() {
     // Two lines of text
     // ======================================================================
     else if (type == "twoline") {
-        renderer.setBrightness(twoLineRendererData.brightness);
-
-        renderer.clear();
-
-        renderer.setColor(twoLineRendererData.borderColor);
-
-        renderer.drawArea(0, 0, 30, 20);
-
-        renderer.setFont(Fonts::FONT1);
-
-        renderer.setColor(twoLineRendererData.bottomTextColor);
-        renderer.scrollText(twoLineRendererData.bottomText, 2, 3, 2, 26, Direction::HORIZONTAL, twoLineRendererData.bottomSpeed);
-
-        renderer.setColor(twoLineRendererData.topTextColor);
-        renderer.scrollText(twoLineRendererData.topText, 2, 11, 2, 26, Direction::HORIZONTAL, twoLineRendererData.topSpeed);
+        renderTwoLine(
+                twoLineRendererData.brightness,
+                twoLineRendererData.borderColor,
+                twoLineRendererData.topTextColor,
+                twoLineRendererData.topText,
+                twoLineRendererData.topSpeed,
+                twoLineRendererData.bottomTextColor,
+                twoLineRendererData.bottomText,
+                twoLineRendererData.bottomSpeed
+                );
     }
+    // ======================================================================
+
+
+    // Image
+    // ======================================================================
+    else if (type == "image") {
+        if (recreateImage) {
+            recreateImage = false;
+
+            renderImage(imageRendererData.brightness, imageRendererData.image);
+        }
+    }
+    // ======================================================================
+
+
+    // No Data
     // ======================================================================
     else {
         renderer.setBrightness(255);
@@ -176,14 +188,18 @@ void loop() {
         String text = "No Data";
         renderer.scrollText(text, 2, 4, 2, 26, Direction::HORIZONTAL, 3);
     }
-
+    // ======================================================================
 
     renderer.update();
     renderer.render();
 }
 
 String requestField(const String& field) {
+    yield();
+
     Serial.println(String("   Requesting data field ") + field);
+
+    WiFiClient internetClient;
 
     HTTPClient http;
 
@@ -198,7 +214,11 @@ String requestField(const String& field) {
 }
 
 vector<int> requestImageFragment(int fragmentIndex, int fragmentSize) {
+    yield();
+
     Serial.println(String("   Requesting image fragment ") + fragmentIndex);
+
+    WiFiClient internetClient;
 
     HTTPClient http;
 
@@ -225,6 +245,11 @@ vector<int> requestImageFragment(int fragmentIndex, int fragmentSize) {
 void updateRendererData() {
     Serial.println("Updating renderer data...");
 
+    renderTwoLine(255, Color::BLUE, Color::YELLOW, "Read", 0, Color::YELLOW, "Data", 0);
+
+    renderer.update();
+    renderer.render();
+
     if (type == "simple")
     {
         simpleRendererData.text = requestField("message");
@@ -247,6 +272,8 @@ void updateRendererData() {
         twoLineRendererData.bottomTextColor = requestField("bottomTextColor").toInt();
         twoLineRendererData.bottomSpeed = requestField("bottomSpeed").toInt();
 
+        twoLineRendererData.borderColor = requestField("borderColor").toInt();
+
         twoLineRendererData.brightness = requestField("brightness").toInt();
 
         Serial.println("Deserialized twoline display data.");
@@ -256,19 +283,21 @@ void updateRendererData() {
         int c = 0;
 
         for (int i = 0; i < conf::fragmentCount; ++i) {
-            for (auto color : requestImageFragment(i, conf::fragmentSize)) {
-                imageRendererData.image[c] = color;
-                c++;
-            }
+            for (auto color : requestImageFragment(i, conf::fragmentSize))
+                imageRendererData.image[c++] = color;
         }
 
         imageRendererData.brightness = requestField("brightness").toInt();
+
+        recreateImage = true;
 
         Serial.println("Deserialized image display data.");
     }
 }
 
 void clientUpdateReceived(WStype_t wsType, uint8_t * payload, size_t length) {
+    yield();
+
     if (wsType == WStype_CONNECTED) {
         Serial.printf("Connected to url: %s\n", payload);
         client.sendTXT("init");
@@ -289,4 +318,58 @@ void clearRenderer(int color) {
 
     renderer.update();
     renderer.render();
+}
+
+void renderSimple(int brightness, int borderColor, int textColor, String text, int speed) {
+    yield();
+
+    renderer.setBrightness(brightness);
+
+    renderer.clear();
+
+    renderer.setColor(borderColor);
+
+    renderer.drawArea(0, 0, 30, 20);
+
+    renderer.setFont(Fonts::FONT2);
+
+    renderer.setColor(textColor);
+    renderer.scrollText(text, 2, 4, 2, 26, Direction::HORIZONTAL, speed);
+}
+
+void renderTwoLine(int brightness, int borderColor, int topTextColor, String topText, int topSpeed, int bottomTextColor, String bottomText, int bottomSpeed) {
+    yield();
+
+    renderer.setBrightness(brightness);
+
+    renderer.clear();
+
+    renderer.setColor(borderColor);
+
+    renderer.drawArea(0, 0, 30, 20);
+
+    renderer.setFont(Fonts::FONT1);
+
+    renderer.setColor(topTextColor);
+    renderer.scrollText(topText, 2, 11, 2, 26, Direction::HORIZONTAL, topSpeed);
+
+    renderer.setColor(bottomTextColor);
+    renderer.scrollText(bottomText, 2, 3, 2, 26, Direction::HORIZONTAL, bottomSpeed);
+}
+
+void renderImage(int brightness, uint32_t image[]) {
+    yield();
+
+    renderer.setBrightness(brightness);
+
+    renderer.clear();
+
+    int c = 0;
+
+    for (int col = 0; col < conf::displayWidth; ++col) {
+        for (int row = 0; row < conf::displayHeight; ++row) {
+            renderer.setColor(image[c++]);
+            renderer.drawPixel(col, conf::displayHeight - 1 - row);
+        }
+    }
 }
